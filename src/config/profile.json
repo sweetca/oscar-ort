@@ -4,7 +4,7 @@
     "jobType": 30
   },
   "prod": {
-    "job": "http://127.0.0.1:8081",
+    "job": "http://oscar-controller:8081",
     "jobType": 30
   }
 }
