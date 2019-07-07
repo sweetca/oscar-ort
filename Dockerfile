@@ -10,16 +10,16 @@ COPY ./supervisord.conf /etc/supervisord.conf
 USER ort
 WORKDIR /ort-api
 
+COPY src src
 COPY package.json package.json
 COPY package-lock.json package-lock.json
 
 RUN npm install
-COPY src src
 
 USER root
 
-ADD ort-633.json codescoop-175906-85f8d1f405f7.json
-RUN echo $SSH_KEY | base64 -d > /root/.ssh/id_rsa
-RUN chmod 600 /root/.ssh/id_rsa
+#ADD ort-633.json codescoop-175906-85f8d1f405f7.json
+#RUN echo $SSH_KEY | base64 -d > /root/.ssh/id_rsa
+#RUN chmod 600 /root/.ssh/id_rsa
 
 CMD supervisord -c "/etc/supervisord.conf"

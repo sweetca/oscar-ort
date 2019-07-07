@@ -1,16 +1,10 @@
 {
   "local": {
-    "mongo": "mongodb://127.0.0.1:27017/oss",
-    "db": "oss",
-    "job": "http://localhost:8081/",
-    "jobType": 104,
-    "repositoryDir": "/tmp/oscar/repositories"
+    "job": "http://localhost:8081",
+    "jobType": 30
   },
   "prod": {
-    "mongo": "mongodb://{LOGIN}:{PASS}@127.0.0.1:27017/oss",
-    "db": "oss",
-    "job": "http://127.0.0.1:8081/",
-    "jobType": 104,
-    "repositoryDir": "/tmp/oscar/repositories"
+    "job": "http://127.0.0.1:8081",
+    "jobType": 30
   }
 }

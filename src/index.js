@@ -1,49 +1,21 @@
-const express = require('express');
-const bodyParser = require('body-parser');
 const cp = require('child-process-promise');
 const util = require('util');
 const fs = require('fs');
 const schedule = require('node-schedule');
-const request = require('request-promise-native');
-const parseUrl = require('git-url-parse');
 const convertData = require('./converter');
-const replaceUrl = require('./replaceUrl');
 
 const readFile = util.promisify(fs.readFile);
 const readDir = util.promisify(fs.readdir);
-const textParser = bodyParser.text();
 
-const inProgress = {};
+const jobApi = require('./job/job').jobApi;
+
 // 1 hour limit for log of subprocess
 const timeLimit = 5 * 3600 * 1000;
-let currentJob = {id: null};
 let locked = false;
-
-const config = require('./config/config').config;
-const jobApi = require('./job/job');
-
-function isGitRepo(url) {
-    return url.endsWith('.git') || isGithubRepo(url) || isAndroidSourceRepo(url);
-}
-
-function isGithubRepo(url) {
-    return /^https:\/\/.*github\.com\/[^/]+\/[^/]+\/{0,1}$/.test(url);
-}
-
-function isAndroidSourceRepo(url) {
-    return url.startsWith('https://android.googlesource.com/');
-}
-
-function cleanGitUrl(url) {
-    if (!isGitRepo(url)) {
-        throw new Error(`Called with non git url: ${url}`);
-    }
-    return url;
-}
 
 function pickStdout({stdout}) {
     return stdout.trim();
-}
+};
 
 function getTimer(process) {
     return setTimeout(() => {
@@ -51,9 +23,9 @@ function getTimer(process) {
         },
         timeLimit
     );
-}
+};
 
-const createHtmlReport = (tmpDir, scanId) => {
+const createHtmlReport = (tmpDir, component, version) => {
     return spawnLogged(
         'ort',
         [
@@ -70,65 +42,60 @@ const createHtmlReport = (tmpDir, scanId) => {
             capture: ['stdout', 'stderr'],
         },
         tmpDir,
-        scanId
+        component,
+        version
     );
 };
 
-function reporter(tmpDir, scanId) {
+function reporter(tmpDir, component, version) {
     return cp
         .exec('find out -type f', {cwd: tmpDir})
         .then(pickStdout)
-        .then(() => createHtmlReport(tmpDir, scanId))
+        .then(() => createHtmlReport(tmpDir, component, version))
         .then(() => readFile(`${tmpDir}/out/scan-report-web-app.html`, 'utf8'))
-        .then(file => sendHtml(file, scanId));
+        .then(file => sendHtml(file, component, version));
 }
 
-function sendHtml(file, id) {
-    return request.post({
-        url: `${API_URL}/report_upload/?id=${id}`,
-        body: file,
-    }).then(() => console.log('html report - success')).catch((e) => {
-        console.log('html report - error');
-        throw new Error(e);
-    });
+function sendHtml(file, component, version) {
+    jobApi
+        .uploadHtml(file, component, version)
+        .then(() => console.log('html upload success'))
+        .catch((e) => {
+            console.log('html upload error');
+            throw new Error(e);
+        });
 }
 
-function sendScanResult(file, scanId) {
-    return request.post({
-        url: `${config.apiUrl}stack_scan/upload/?scanId=${scanId}`,
-        json: {
-            result: file,
-            type: 'json',
-        },
-    }).then(() => console.log('send scan result - success')).catch((e) => {
-        console.log('send scan result - error');
-        throw new Error(e);
-    });
+function sendLogs(tmpDir, component, version) {
+    return readFile(`${tmpDir}/logger.txt`, 'utf8')
+        .then(file =>
+            jobApi.uploadLogs(file, component, version)
+                .then(() => console.log('logs upload success'))
+                .catch((err) => console.error('logs upload error', err)));
 }
 
-function sendErrorResult(reason, scanId) {
-    return request.post({
-        url: `${config.apiUrl}stack_scan/uploadError/?scanId=${scanId}`,
-        json: {
-            error: reason,
-        },
-    })
-        .then(() => console.log('send scan error - success'))
-        .catch(() => console.log('send scan error - error'));
+function sendScanResult(file, component, version) {
+    return jobApi.uploadReport(file, component, version)
+        .then(() => console.log('report upload success'))
+        .catch((e) => {
+            console.log('report upload error');
+            throw new Error(e);
+        });
 }
 
-function cleanup(url) {
-    finishJob();
-    return () => {
-        inProgress[url] = false;
-    };
+function sendErrorResult(reason, component, version) {
+    return jobApi.uploadError(reason, component, version)
+        .then(() => console.log('scan error upload success'))
+        .catch(() => console.log('scan error upload failed'));
 }
 
 function writeLogs(process, tmpDir) {
-    const logStream = fs.createWriteStream(`${tmpDir}/logger.txt`, {flags: 'a'});
     let timer = getTimer(process);
 
+    const logStream = fs.createWriteStream(`${tmpDir}/logger.txt`, {flags: 'a'});
+
     process.stdout.on('data', (data) => {
+        console.log('log to file...');
         clearTimeout(timer);
         timer = getTimer(process);
         const logs = data.toString();
@@ -141,6 +108,7 @@ function writeLogs(process, tmpDir) {
     });
 
     process.stderr.on('data', (data) => {
+        console.log('error to file...');
         clearTimeout(timer);
         timer = getTimer(process);
         if (data.toString().trim().length > 0) {
@@ -150,9 +118,9 @@ function writeLogs(process, tmpDir) {
     });
 
     return logStream;
-}
+};
 
-const spawnLogged = (command, args, options, tmpDir, scanId) => {
+const spawnLogged = (command, args, options, tmpDir) => {
     console.log(`starting command ${command} with args ${args.join(' ')}`);
     const spawned = cp.spawn(command, args, options);
     const {childProcess} = spawned;
@@ -165,7 +133,6 @@ const spawnLogged = (command, args, options, tmpDir, scanId) => {
         }, (...params) => {
             console.log(`failed command ${command} with args ${args.join(' ')}`);
             logStream.close();
-            sendLogs(tmpDir, scanId).then(() => cp.exec(`rm -rf ${tmpDir}`));
             reject(new Error(...params));
         }).catch((err) => {
             console.log(`failed command ${command} with args ${args.join(' ')}`);
@@ -175,24 +142,25 @@ const spawnLogged = (command, args, options, tmpDir, scanId) => {
     });
 };
 
-const gitClone = (url, tmpDir, scanId) => {
+const clone = (path, tmpDir) => {
+    console.log(`copy component sources ${path}`);
     return spawnLogged(
-        'git',
+        'cp',
         [
-            'clone',
-            cleanGitUrl(url),
-            'repo'
+            '-R',
+            path,
+            './repo',
         ],
         {
             cwd: tmpDir,
             capture: ['stdout', 'stderr'],
         },
-        tmpDir,
-        scanId
+        tmpDir
     );
 };
 
-const analyzeDependencies = (tmpDir, scanId) => {
+const analyzeDependencies = (tmpDir, component, version) => {
+    console.log(`analyzeDependencies : ${tmpDir}/repo`);
     return cp
         .exec(`find ${tmpDir} -name package.json`)
         .then(pickStdout)
@@ -215,12 +183,13 @@ const analyzeDependencies = (tmpDir, scanId) => {
                 capture: ['stdout', 'stderr'],
             },
             tmpDir,
-            scanId,
+            component,
+            version
         ));
 };
 
-const converter = (tmpDir, scanId) => {
-    console.log(`converter : ${tmpDir} : ${scanId}`);
+const converter = (tmpDir, component, version) => {
+    console.log(`converter : ${tmpDir} : ${component} : ${version}`);
     if (fs.existsSync(`${tmpDir}/out/scan-result.json`)) {
         console.log(`file exist : ${tmpDir}/out/scan-result.json`);
     } else {
@@ -228,44 +197,24 @@ const converter = (tmpDir, scanId) => {
     }
     return readFile(`${tmpDir}/out/scan-result.json`, 'utf8')
         .then(file => convertData(JSON.parse(file)))
-        .then(result => sendScanResult(result, scanId));
+        .then(result => sendScanResult(result, component, version));
 };
 
-const changeUrl = (file, auth, revert = false) => {
-    console.log(`changeUrl : ${file} : ${auth}`);
-    return replaceUrl(`${file}`, auth, revert);
-};
-
-const depFilePromise = (tmpDir) => {
-    return cp.exec('find out -type f', {cwd: tmpDir})
-        .then(pickStdout)
-        .then(f => f.split('\n')[0]);
-};
-
-const scanResultPromise = (tmpDir) => {
-    return new Promise((resolve) => {
-        if (fs.existsSync(`${tmpDir}/out/scan-result.json`)) {
-            return resolve(`${tmpDir}/out/scan-result.json`);
-        }
-        throw new Error(`file ${tmpDir}/out/scan-result.json does not exist`);
-    });
-};
-
-const checkAnalyzeResult = (tmpDir, scanId) => {
+const checkAnalyzeResult = (tmpDir, component, version) => {
     console.log(`checkAnalyzeResult : ${tmpDir}/out/analyzer-result.json`);
     return readFile(`${tmpDir}/out/analyzer-result.json`, 'utf-8')
         .then((res) => {
             const data = JSON.parse(res);
             if (!data.analyzer.result.packages.length) {
                 console.log(`No dependencies after analyzer : ${JSON.stringify(data.analyzer)}`);
-                sendScanResult(convertData(data), scanId).then(() => cp.exec(`rm -rf ${tmpDir}`));
+                sendScanResult(convertData(data), component, version).then(() => cp.exec(`rm -rf ${tmpDir}`));
                 throw new Error('No dependencies');
             }
         });
 };
 
-const scanDependencies = (tmpDir, scanId) => {
-    console.log(`scanDependencies : ${tmpDir} : ${scanId}`);
+const scanDependencies = (tmpDir, component, version) => {
+    console.log(`scanDependencies : dir ${tmpDir} : c ${component} : v ${version}`);
     return spawnLogged(
         'ort',
         [
@@ -285,205 +234,89 @@ const scanDependencies = (tmpDir, scanId) => {
             capture: ['stdout', 'stderr'],
         },
         tmpDir,
-        scanId,
+        component,
+        version
     );
 };
 
-function sendLogs(tmpDir, id) {
-    return readFile(`${tmpDir}/logger.txt`, 'utf8')
-        .then(file => request.post({
-            url: `${config.apiUrl}logs_upload/?id=${id}`,
-            body: file,
-        }).then(() => console.log('send logs - success'))
-            .catch(() => console.log('send logs - error')));
-}
-
-const getUrlParams = (url) => {
-    let newUrl = url;
-    let parsedUrl;
-    let auth;
-    if (isGithubRepo(newUrl)) {
-        if (!newUrl.endsWith('.git')) {
-            newUrl = `${url}.git`;
-        }
-        parsedUrl = parseUrl(newUrl);
-        auth = (parsedUrl.user === 'git' || !parsedUrl.user) ? '' : `${parsedUrl.protocol}://${parsedUrl.user}`;
-        if (!auth && isGithubRepo(newUrl)) {
-            newUrl = parsedUrl.toString('ssh');
-        }
-    }
-    return {
-        url: newUrl,
-        auth,
-    };
-};
-
-const checkEmptyFolder = (tmpDir, scanId) => {
+const checkEmptyFolder = (tmpDir) => {
     return readDir(`${tmpDir}/repo`)
         .then((result) => {
             if (!result.filter(item => item !== '.git').length) {
-                sendScanResult([], scanId);
                 throw new Error('Empty repository');
             }
         });
 };
 
-function analyzeGitRepo(url, scanId) {
-    inProgress[url] = true;
-    const urlParams = getUrlParams(url);
+function analyzeComponent(job) {
+    const component = job.payload.component;
+    const version = job.payload.componentVersion;
+    const path = job.payload.componentPath;
+
+    console.log(`start scan component : ${component} : ${version} : ${path}`);
 
     return cp
         .exec('mktemp -d')
         .then(pickStdout)
         .then(
             (tmpDir) => {
-                console.log('cloning ', cleanGitUrl(urlParams.url));
-                return gitClone(cleanGitUrl(urlParams.url), tmpDir, scanId)
-                    .then(() => checkEmptyFolder(tmpDir, scanId))
-                    .then(() => analyzeDependencies(tmpDir, scanId))
-                    .then(() => checkAnalyzeResult(tmpDir, scanId))
-                    .then(() => changeUrl(`${tmpDir}/out/analyzer-result.json`, urlParams.auth))
-                    .then(() => scanDependencies(tmpDir, scanId))
-                    .then(() => changeUrl(`${tmpDir}/out/scan-result.json`, urlParams.auth, true))
-                    .then(() => converter(tmpDir, scanId))
-                    .then(() => reporter(tmpDir, scanId))
-                    .then(() => sendLogs(tmpDir, scanId))
-                    .then(() => console.log(`Scan finished : ${url} : ${scanId}`))
-                    .then(() => Promise.all([depFilePromise(tmpDir), scanResultPromise(tmpDir)])
-                        .then(([depFile, scanFile]) => Promise.all([readFile(`${tmpDir}/${depFile}`), readFile(`${scanFile}`)]))
-                    )
-                    .then((ret) => {
+                return clone(path, tmpDir)
+                    .then(() => checkEmptyFolder(tmpDir))
+                    .then(() => analyzeDependencies(tmpDir, component, version))
+                    .then(() => checkAnalyzeResult(tmpDir, component, version))
+                    .then(() => scanDependencies(tmpDir, component, version))
+                    .then(() => converter(tmpDir, component, version))
+                    .then(() => reporter(tmpDir, component, version))
+                    .then(() => sendLogs(tmpDir, component, version))
+                    .then(() => {
+                        console.log(`scan finished : ${component} : ${version} : ${path}`);
                         cp.exec(`rm -rf ${tmpDir}`);
-                        return ret;
                     })
                     .catch((err) => {
-                        sendLogs(tmpDir, scanId)
+                        sendLogs(tmpDir, component, version)
                             .then(() => {
                                 cp.exec(`rm -rf ${tmpDir}`);
+                                console.log('clean tmp dir after error');
                             });
                         throw err;
                     });
             }
         )
-        .then(([dependencies, licenses]) => {
-            cleanup(url)();
-            return {
-                dependencies: [dependencies],
-                licenses: [licenses],
-                type: 'json',
-            };
-        })
         .catch((err) => {
-            console.log(`error ${err.message}`);
-            return sendErrorResult(err.toString(), scanId)
-                .then(() => cleanup(url));
+            console.error(`error when scan : ${component} : ${version} : ${path}`, err);
+            return sendErrorResult(err.toString(), component, version)
+                .then(() => finishJob(job))
+                .catch(error => {
+                    console.error(`error on sendErrorResult : ${component} : ${version} : ${path}`, error);
+                });
         });
 }
 
-const j = schedule.scheduleJob('*/1 * * * *', () => {
+const finishJob = (job) => {
+    console.log(`finishing job ${job.id}`);
+
+    jobApi.finish(job.id)
+        .then(() => {
+            console.log(`Job finished ${job.id}`);
+            locked = false;
+        })
+        .catch(error => {
+            console.log(error);
+            setTimeout(() => {
+                finishJob(job);
+            }, 1000);
+        });
+};
+
+schedule.scheduleJob('*/1 * * * *', () => {
     if (locked === false) {
-        console.log(`checking job : ${config.getJobUrl}`);
-        const options = {
-            url: config.getJobUrl,
-            headers: {
-                'Accept': 'application/json',
-            },
-        };
-        request(options, (error, response, body) => {
-            if (!error && response.statusCode === 200) {
-                currentJob = JSON.parse(body);
-                locked = true;
-                console.log(`starting ort scan ${currentJob.payload.urlToScan}`);
-                analyzeGitRepo(currentJob.payload.urlToScan, currentJob.payload.stackScanId);
-            } else {
-                console.log(`error job response ${response.statusCode} | ${error}`);
-            }
+        jobApi.get().then(body => {
+            const job = JSON.parse(body);
+            console.log(`starting ort scan job ${job.id}`);
+            locked = true;
+            analyzeComponent(job);
+        }).catch((error) => {
+            console.log(`error job request ${error.message}`);
         });
     }
 });
-
-const finishJob = () => {
-    console.log(`try to finish job ${currentJob.id}`);
-    jobApi.finish(currentJob.id).then((error, response) => {
-        if (error) {
-            console.log(error.toString());
-            setTimeout(() => {
-                finishJob();
-            }, 1000);
-        } else if (response.statusCode === 200) {
-            currentJob = null;
-            locked = false;
-            console.log('Job finished');
-        } else {
-            console.log(response.toString());
-            setTimeout(() => {
-                finishJob();
-            }, 1000);
-        }
-    }).catch(() => {
-        console.log(response.toString());
-        setTimeout(() => {
-            finishJob();
-        }, 1000);
-    });
-
-    const options = {
-        url: `${config.finishJobUrl}${currentJob.id}`,
-        method: 'PUT',
-        headers: {
-            Accept: 'application/json',
-        },
-    };
-    return request(options, (error, response) => {
-
-    });
-};
-
-const app = express();
-
-app.use('*', (req, res, next) => {
-    req.connection.setTimeout(0);
-    next();
-});
-
-app.post('/url_in_progress', textParser, (req, res) => {
-    const url = req.body;
-    res.json({inProgress: inProgress[url]});
-});
-
-app.post('/url', textParser, (req, res, next) => {
-    const url = req.body;
-    if (isGitRepo(url)) {
-        locked = true;
-        analyzeGitRepo(url, req).then(output => res.json(output)).catch(next);
-    } else {
-        res.sendStatus(400);
-    }
-});
-
-app.post('/url_async', textParser, (req, res, next) => {
-    const url = req.body;
-    const scanId = req.headers.scan_id;
-
-    if (isGitRepo(url)) {
-        locked = true;
-        analyzeGitRepo(url, scanId, req).catch(next);
-        return res.sendStatus(200);
-    } else {
-        return res.sendStatus(400);
-    }
-});
-
-app.get('/current', (req, res) => {
-    res.send(currentJob.id);
-});
-
-openApiSession().then((token) => {
-    if (!token) {
-        throw new Error('Error open session to API module');
-    }
-    app.listen(3000, () => {
-        console.log('OSCAR-ORT started on port 3000');
-    });
-});
-

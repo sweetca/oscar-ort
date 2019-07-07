@@ -3,16 +3,26 @@
 
 const profileConst = require('./profile.json');
 
-const {PROFILE, MONGO_LOGIN, MONGO_PASS, OSCAR_DIR} = process.env;
+const {PROFILE} = process.env;
 
 const profileString = PROFILE || 'local';
-console.log(`Install profile for ort : ${profileString}`);
+console.log(`Install profile for oscar-ort : ${profileString}`);
 
 let config = profileConst[profileString];
-config.mongoUrl = config.mongo.replace('{LOGIN}', MONGO_LOGIN).replace('{PASS}', MONGO_PASS);
-config.getJobUrl = `${config.job}find_job?type=${config.jobType}`;
-config.finishJobUrl = `${config.job}finish_job/`;
-config.apiUrl = `${config.job}`;
-config.repositoryDir = OSCAR_DIR ? OSCAR_DIR : config.repositoryDir;
+
+config.getJobUrl = `${config.job}/find_job/${config.jobType}/oscar-ort-1`;
+
+config.getFinishJob = (jobId) => {
+    return `${config.job}/finish_job/${jobId}/oscar-ort-1`;
+};
+config.getUploadReport = (component, version) => {
+    return `${config.job}/ort/report/${component}/${version}`;
+};
+config.getUploadHtml = (component, version) => {
+    return `${config.job}/ort/html/${component}/${version}`;
+};
+config.getUploadLogs = (component, version) => {
+    return `${config.job}/ort/logs/${component}/${version}`;
+};
 
 exports.config = config;
