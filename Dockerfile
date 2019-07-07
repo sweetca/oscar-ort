@@ -12,4 +12,5 @@ COPY package-lock.json package-lock.json
 
 RUN npm install
 
-RUN npm start
+ENV PROFILE=prod
+CMD ["npm", "start"]
