@@ -73,14 +73,12 @@ const jobApi = {
     uploadError: (reason, component, version) => {
         const options = {
             method: 'POST',
-            uri: config.getUploadReport(component, version),
+            uri: config.getUploadError(component, version),
             headers: {
                 'Accept': 'application/json',
-                'Content-Type': 'application/json'
+                'Content-Type': 'text/plain'
             },
-            json: {
-                error: reason
-            }
+            body: reason
         };
         return request(options);
     }

@@ -267,6 +267,7 @@ function analyzeComponent(job) {
                     .then(() => {
                         console.log(`scan finished : ${component} : ${version} : ${path}`);
                         cp.exec(`rm -rf ${tmpDir}`);
+                        finishJob(job);
                     })
                     .catch((err) => {
                         sendLogs(tmpDir, component, version)
@@ -304,7 +305,7 @@ const finishJob = (job) => {
         });
 };
 
-schedule.scheduleJob('*/1 * * * *', () => {
+const iteration = () => {
     if (locked === false) {
         jobApi.get().then(body => {
             const job = JSON.parse(body);
@@ -315,4 +316,7 @@ schedule.scheduleJob('*/1 * * * *', () => {
             console.log(`error job request ${error.message}`);
         });
     }
-});
+};
+
+schedule.scheduleJob('*/1 * * * *', iteration);
+iteration();

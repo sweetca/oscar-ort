@@ -24,5 +24,8 @@ config.getUploadHtml = (component, version) => {
 config.getUploadLogs = (component, version) => {
     return `${config.job}/ort/logs/${component}/${version}`;
 };
+config.getUploadError = (component, version) => {
+    return `${config.job}/ort/error/${component}/${version}`;
+};
 
 exports.config = config;
