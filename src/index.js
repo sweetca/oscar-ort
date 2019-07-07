@@ -161,31 +161,27 @@ const clone = (path, tmpDir) => {
 
 const analyzeDependencies = (tmpDir, component, version) => {
     console.log(`analyzeDependencies : ${tmpDir}/repo`);
-    return cp
-        .exec(`find ${tmpDir} -name package.json`)
-        .then(pickStdout)
-        .then(output => output.split('\n'))
-        .then(() => spawnLogged(
-            'ort',
-            [
-                '--info',
-                'analyze',
-                '--allow-dynamic-versions',
-                '-i',
-                `${tmpDir}/repo`,
-                '-o',
-                `${tmpDir}/out`,
-                '-f',
-                'JSON',
-            ],
-            {
-                cwd: tmpDir,
-                capture: ['stdout', 'stderr'],
-            },
-            tmpDir,
-            component,
-            version
-        ));
+    return spawnLogged(
+        'ort',
+        [
+            '--info',
+            'analyze',
+            '--allow-dynamic-versions',
+            '-i',
+            `${tmpDir}/repo`,
+            '-o',
+            `${tmpDir}/out`,
+            '-f',
+            'JSON',
+        ],
+        {
+            cwd: tmpDir,
+            capture: ['stdout', 'stderr'],
+        },
+        tmpDir,
+        component,
+        version
+    );
 };
 
 const converter = (tmpDir, component, version) => {

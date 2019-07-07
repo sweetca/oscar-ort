@@ -18,8 +18,4 @@ RUN npm install
 
 USER root
 
-#ADD ort-633.json codescoop-175906-85f8d1f405f7.json
-#RUN echo $SSH_KEY | base64 -d > /root/.ssh/id_rsa
-#RUN chmod 600 /root/.ssh/id_rsa
-
-CMD supervisord -c "/etc/supervisord.conf"
+RUN npm start
