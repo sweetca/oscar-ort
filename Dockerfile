@@ -6,6 +6,7 @@ RUN mkdir /ort-api
 WORKDIR /ort-api
 
 COPY src src
+COPY config.yml config.yml
 COPY package.json package.json
 COPY package-lock.json package-lock.json
 

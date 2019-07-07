@@ -1,0 +1,4 @@
+artifactory_cache:
+  url: "http://35.190.196.60:8081/artifactory"
+  api_token: "AKCp5bCBMeFbg3AMFCoZ2Ran8xQEWVzQwWueCUzSjz9cGHziPJNxHoQb3k1Gc2BmLKcUD1TC9"
+  repository: "generic-local"
