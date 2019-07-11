@@ -13,4 +13,5 @@ COPY package-lock.json package-lock.json
 RUN npm install
 
 ENV PROFILE=prod
+ENV MODE=$APP_MODE
 CMD ["npm", "start"]

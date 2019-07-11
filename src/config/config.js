@@ -3,14 +3,21 @@
 
 const profileConst = require('./profile.json');
 
-const {PROFILE} = process.env;
+const {PROFILE, MODE} = process.env;
 
 const profileString = PROFILE || 'local';
 console.log(`Install profile for oscar-ort : ${profileString}`);
 
 let config = profileConst[profileString];
 
-config.getJobUrl = `${config.job}/find_job/${config.jobType}/oscar-ort-1`;
+if (MODE && MODE === 'analyze') {
+    config.mode = 'analyze';
+} else {
+    config.mode = 'scan';
+}
+console.log(`Install mode for oscar-ort : ${config.mode}`);
+
+config.getJobUrl = `${config.job}/find_job/${config.jobType[config.mode]}/oscar-ort-1`;
 
 config.getFinishJob = (jobId) => {
     return `${config.job}/finish_job/${jobId}/oscar-ort-1`;

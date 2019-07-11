@@ -10,7 +10,7 @@ const jobApi = {
             method: 'GET',
             uri: config.getJobUrl,
             headers: {
-                'Accept': 'application/json'
+                'Accept': 'application/json;charset=UTF-8'
             }
         };
         return request(options);
@@ -20,7 +20,7 @@ const jobApi = {
             method: 'PUT',
             uri: config.getFinishJob(jobId),
             headers: {
-                'Accept': 'application/json'
+                'Accept': 'application/json;charset=UTF-8'
             }
         };
         return request(options);
@@ -33,8 +33,8 @@ const jobApi = {
             method: 'POST',
             uri: config.getUploadHtml(component, version),
             headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'text/plain'
+                'Accept': 'application/json;charset=UTF-8',
+                'Content-Type': 'text/plain;charset=UTF-8'
             },
             body: file
         };
@@ -48,25 +48,22 @@ const jobApi = {
             method: 'POST',
             uri: config.getUploadLogs(component, version),
             headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'text/plain'
+                'Accept': 'application/json;charset=UTF-8',
+                'Content-Type': 'text/plain;charset=UTF-8'
             },
             body: file
         };
         return request(options);
     },
-    uploadReport: (file, component, version) => {
+    uploadReport: (data, component, version) => {
         const options = {
             method: 'POST',
             uri: config.getUploadReport(component, version),
             headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
+                'Accept': 'application/json;charset=UTF-8',
+                'Content-Type': 'application/json;charset=UTF-8'
             },
-            json: {
-                result: file,
-                type: 'json',
-            }
+            json: data
         };
         return request(options);
     },
@@ -75,8 +72,8 @@ const jobApi = {
             method: 'POST',
             uri: config.getUploadError(component, version),
             headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'text/plain'
+                'Accept': 'application/json;charset=UTF-8',
+                'Content-Type': 'text/plain;charset=UTF-8'
             },
             body: reason
         };
