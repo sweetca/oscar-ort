@@ -99,7 +99,7 @@ const readScan = item => {
             const till = Date.parse(firstresult.summary.end_time);
             scan.fileCount = firstresult.summary.file_count;
             scan.timeScan = till - from;
-            if (firstresult.summary.license_findings && firstresult.summary.license_findings.license_findings.length > 0) {
+            if (firstresult.summary.license_findings && firstresult.summary.license_findings.length > 0) {
                 scan.licenses = firstresult.summary.license_findings.map(l => l.license);
             }
         }
@@ -133,14 +133,14 @@ const convertAnalyser = (data) => {
     console.log('start convertAnalyser');
     return new Promise((resolve, reject) => {
         if (!data) {
-            throw new Error('Data after analyzer empty!');
+            reject(new Error('Data after analyzer empty!'));
         }
         let analyzer = data.analyzer ? data.analyzer : null;
         if (analyzer && analyzer.result) {
             analyzer = analyzer.result;
         } else {
             console.log(data);
-            throw new Error('No result data after analyzer!');
+            reject(new Error('No result data after analyzer!'));
         }
 
         let projects = [];
@@ -170,7 +170,9 @@ const convertScan = (data) => {
                 }
                 console.log('end convertScan');
                 resolve(result);
-            }).catch(e => {throw new Error(e);});
+            }, (...params) => {
+                reject(new Error(...params));
+            });
     });
 };
 

@@ -38,7 +38,6 @@ const writeLogs = (process, tmpDir) => {
     const logStream = fs.createWriteStream(`${tmpDir}/logger.txt`, {flags: 'a'});
 
     process.stdout.on('data', (data) => {
-        console.log('log to file...');
         clearTimeout(timer);
         timer = getTimer(process);
         const logs = data.toString();
@@ -51,7 +50,6 @@ const writeLogs = (process, tmpDir) => {
     });
 
     process.stderr.on('data', (data) => {
-        console.log('error to file...');
         clearTimeout(timer);
         timer = getTimer(process);
         if (data.toString().trim().length > 0) {
@@ -137,7 +135,8 @@ const convertAnalyser = (tmpDir, component, version) => {
     const file = fs.readFileSync(`${tmpDir}/out/analyzer-result.json`, 'utf8');
     return convert
         .convertAnalyser(JSON.parse(file))
-        .then(result => sendScanResult(result, component, version));
+        .then(result => sendScanResult(result, component, version))
+        .catch(err => {throw new Error(err)});
 };
 
 const convertScan = (tmpDir, component, version) => {
@@ -150,7 +149,8 @@ const convertScan = (tmpDir, component, version) => {
     const file = fs.readFileSync(`${tmpDir}/out/scan-result.json`, 'utf8');
     return convert
         .convertScan(JSON.parse(file))
-        .then(result => sendScanResult(result, component, version));
+        .then(result => sendScanResult(result, component, version))
+        .catch(err => {throw new Error(err)});
 };
 
 const finishJob = (job) => {
